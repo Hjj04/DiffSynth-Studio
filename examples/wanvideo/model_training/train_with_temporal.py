@@ -105,11 +105,9 @@ def main(args):
     # --- 3. Configure Optimizer ---
     params_to_optimize = []
     if args.train_lora and pipe and args.lora_path:
-        print(f"Loading LoRA from {args.lora_path} into pipeline DIT model...")
-        # Correctly load LoRA into the DIT sub-model via the main pipe interface
-        pipe.load_lora(pipe.dit, args.lora_path)
-        # [FINAL LORA FIX] Correctly set the alpha on the main pipe object
-        pipe.set_lora_alpha(args.lora_alpha)
+        print(f"Loading LoRA from {args.lora_path} into pipeline DIT model (alpha={args.lora_alpha})...")
+        # Scale is applied at load time because WanVideoPipeline does not expose set_lora_alpha.
+        pipe.load_lora(pipe.dit, args.lora_path, alpha=args.lora_alpha)
         
         lora_params = [p for p in pipe.parameters() if p.requires_grad]
         params_to_optimize.extend(lora_params)
