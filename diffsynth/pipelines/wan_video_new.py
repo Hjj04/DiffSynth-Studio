@@ -47,6 +47,9 @@ class WanVideoPipeline(BasePipeline):
         self.vace: VaceWanModel = None
         self.vace2: VaceWanModel = None
         self.animate_adapter: WanAnimateAdapter = None
+        # Temporal module hooks (optional at runtime)
+        self.temporal_module = None
+        self.flow_predictor = None
         self.in_iteration_models = ("dit", "motion_controller", "vace", "animate_adapter")
         self.in_iteration_models_2 = ("dit2", "motion_controller", "vace2", "animate_adapter")
         self.unit_runner = PipelineUnitRunner()
@@ -540,6 +543,21 @@ class WanVideoPipeline(BasePipeline):
             inputs_shared["latents"] = self.scheduler.step(noise_pred, self.scheduler.timesteps[progress_id], inputs_shared["latents"])
             if "first_frame_latents" in inputs_shared:
                 inputs_shared["latents"][:, :, 0:1] = inputs_shared["first_frame_latents"]
+            if self.temporal_module is not None and inputs_shared["latents"].size(2) > 1:
+                with torch.cuda.amp.autocast(enabled=True, dtype=self.torch_dtype):
+                    latents = inputs_shared["latents"].clone().to(torch.float32)
+                    B, C, T, H, W = latents.shape
+                    latents_in = latents.permute(0, 2, 1, 3, 4).contiguous()
+                    latents_fused_list = [latents_in[:, 0]]
+                    for t in range(1, T):
+                        z_prev = latents_in[:, t - 1]
+                        z_cur = latents_in[:, t]
+                        flow_pred = self.flow_predictor(z_prev, z_cur) if self.flow_predictor is not None else None
+                        z_fused, _, _ = self.temporal_module(z_prev, z_cur, s_prev=None, s_cur=None, flow=flow_pred)
+                        latents_fused_list.append(z_fused)
+                    latents_fused = torch.stack(latents_fused_list, dim=1)
+                    latents_fused = latents_fused.permute(0, 2, 1, 3, 4).contiguous()
+                    inputs_shared["latents"] = latents_fused.to(dtype=self.torch_dtype, device=self.device)
         
         # VACE (TODO: remove it)
         if vace_reference_image is not None or (animate_pose_video is not None and animate_face_video is not None):

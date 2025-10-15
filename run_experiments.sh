@@ -15,6 +15,10 @@ BASE_LOG_DIR="./runs/auto_experiments_${TIMESTAMP}"
 SUMMARY_FILE="${BASE_LOG_DIR}/summary_report.csv"
 mkdir -p "$BASE_LOG_DIR"
 
+METADATA_CSV="/share/project/chengweiwu/code/Chinese_ink/hanzhe/ink_wash/final_inkwash_dataset/metadata.csv"
+VIDEOS_ROOT_DIR="/share/project/chengweiwu/code/Chinese_ink/hanzhe/ink_wash/final_inkwash_dataset/videos"
+DATA_FLAGS="--metadata_csv_path ${METADATA_CSV} --videos_root_dir ${VIDEOS_ROOT_DIR}"
+
 # A function to run a single experiment
 run_experiment() {
     local name="$1"
@@ -63,18 +67,18 @@ run_experiment() {
 
 # Experiment 1: Baseline using the pipeline, but no temporal module enhancements (flow=None).
 run_experiment "baseline_pipe_no_flow" \
-    "--use_pipe"
+    "--use_pipe ${DATA_FLAGS}"
 
 # Experiment 2: Pipeline with the learned latent flow predictor.
 run_experiment "pipe_with_learned_flow" \
-    "--use_pipe --use_flow_predictor"
+    "--use_pipe --use_flow_predictor ${DATA_FLAGS}"
 
 # Experiment 3: Training only LoRA with the pipeline and flow predictor.
 # NOTE: Update the lora_path to your actual file location.
-LORA_PATH="/share/project/chengweiwu/code/Chinese_ink/hanzhe/models/inkwash_style_lora_v1/epoch-99.safensors"
+LORA_PATH="/share/project/chengweiwu/code/Chinese_ink/hanzhe/ink_wash/lora_outputs/inkwash_style_v1/epoch-18.safetensors"
 if [ -f "$LORA_PATH" ]; then
     run_experiment "lora_pipe_with_learned_flow" \
-        "--use_pipe --use_flow_predictor --train_lora --lora_path ${LORA_PATH}"
+        "--use_pipe --use_flow_predictor --train_lora --lora_path ${LORA_PATH} ${DATA_FLAGS}"
 else
     echo "Warning: LoRA file not found at ${LORA_PATH}. Skipping LoRA experiment."
 fi

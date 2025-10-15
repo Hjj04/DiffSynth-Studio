@@ -1,12 +1,12 @@
 # examples/wanvideo/model_training/train_with_temporal.py (FINAL CORRECTED VERSION v4)
 import os
+import sys
 import argparse
-import time
+from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision.utils as vutils
 from torch.utils.tensorboard import SummaryWriter
 from transformers import CLIPProcessor, CLIPModel
 from torchvision.transforms.functional import to_pil_image
@@ -16,6 +16,12 @@ from diffsynth.modules.temporal_module import TemporalModule
 from diffsynth.modules.latent_flow_predictor import LatentFlowPredictor
 from diffsynth.utils.alpha_scheduler import AlphaScheduler
 from diffsynth.utils.pipeline_adapter import encode_frames_auto, decode_latents_auto
+
+_CURRENT_DIR = Path(__file__).resolve().parent
+if str(_CURRENT_DIR) not in sys.path:
+    sys.path.append(str(_CURRENT_DIR))
+
+from dataset import RealVideoDataset
 
 # --- Try to import DiffSynth specific modules ---
 try:
@@ -122,8 +128,29 @@ def main(args):
     optimizer = optim.AdamW(params_to_optimize, lr=args.lr)
 
     # --- 4. Prepare Data and Logging ---
-    dataset = DummyVideoDataset(num_samples=50, T=args.num_frames, H=args.height, W=args.width)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+    if args.metadata_csv_path and args.videos_root_dir:
+        if not os.path.isfile(args.metadata_csv_path):
+            raise FileNotFoundError(f"Metadata CSV not found: {args.metadata_csv_path}")
+        if not os.path.isdir(args.videos_root_dir):
+            raise FileNotFoundError(f"Videos root directory not found: {args.videos_root_dir}")
+        dataset = RealVideoDataset(
+            metadata_csv_path=args.metadata_csv_path,
+            videos_root_dir=args.videos_root_dir,
+            num_frames=args.num_frames,
+            height=args.height,
+            width=args.width,
+        )
+        print(f"Loaded RealVideoDataset with {len(dataset)} samples from {args.metadata_csv_path}.")
+    else:
+        print("Metadata CSV or videos root not provided. Falling back to DummyVideoDataset.")
+        dataset = DummyVideoDataset(num_samples=50, T=args.num_frames, H=args.height, W=args.width)
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers,
+        pin_memory=True,
+    )
     writer = SummaryWriter(log_dir=args.logdir)
 
     # --- 5. Main Training Loop ---
@@ -229,9 +256,12 @@ if __name__ == "__main__":
     parser.add_argument("--warmup_steps", type=int, default=400)
     parser.add_argument("--alpha_init", type=float, default=0.2)
     parser.add_argument("--alpha_max", type=float, default=0.8)
-    parser.add_argument("--lora_path", type=str, default=None)
+    parser.add_argument("--lora_path", type=str, default="/share/project/chengweiwu/code/Chinese_ink/hanzhe/ink_wash/lora_outputs/inkwash_style_v1/epoch-18.safetensors")
     parser.add_argument("--lora_alpha", type=float, default=1.0)
     parser.add_argument("--train_lora", action="store_true")
+    parser.add_argument("--metadata_csv_path", type=str, default="/share/project/chengweiwu/code/Chinese_ink/hanzhe/ink_wash/final_inkwash_dataset/metadata.csv")
+    parser.add_argument("--videos_root_dir", type=str, default="/share/project/chengweiwu/code/Chinese_ink/hanzhe/ink_wash/final_inkwash_dataset/videos")
+    parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--num_frames", type=int, default=8)
     parser.add_argument("--height", type=int, default=64)
     parser.add_argument("--width", type=int, default=64)
