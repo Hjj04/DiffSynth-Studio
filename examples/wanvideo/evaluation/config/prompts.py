@@ -120,19 +120,17 @@ LEVEL_CONFIGS = {
     },
     "level_2": {
         "name": "Level 2 (Joint Style Training)",
-        "description": "LoRA + DiT联合训练，无Temporal Module",
-        "use_lora": True,
+        "description": "仅使用微调后的DiT（风格已内化），无Temporal Module",
+        "use_lora": False,
         "use_temporal": False,
         "dit_finetuned": "/share/project/chengweiwu/code/Chinese_ink/hanzhe/code/DiffSynth-Studio/runs/staged_training_final_oom_fix/checkpoints/dit_finetuned_step_final.pth",
-        "lora_path": "/share/project/chengweiwu/code/Chinese_ink/hanzhe/ink_wash/lora_outputs/inkwash_style_v1/epoch-18.safetensors",
     },
     "level_3": {
         "name": "Level 3 (Fully Enhanced)",
-        "description": "LoRA + DiT + Temporal Module完整训练",
-        "use_lora": True,
+        "description": "微调后的DiT + Temporal Module",
+        "use_lora": False,
         "use_temporal": True,
         "dit_finetuned": "/share/project/chengweiwu/code/Chinese_ink/hanzhe/code/DiffSynth-Studio/runs/staged_training_final_oom_fix/checkpoints/dit_finetuned_step_final.pth",
-        "lora_path": "/share/project/chengweiwu/code/Chinese_ink/hanzhe/ink_wash/lora_outputs/inkwash_style_v1/epoch-18.safetensors",
         # 🔧 分别指定两个文件
         "temporal_module_path": "/share/project/chengweiwu/code/Chinese_ink/hanzhe/code/DiffSynth-Studio/runs/staged_training_final_oom_fix/checkpoints/temporal_module_step_final.pth",
         "flow_predictor_path": "/share/project/chengweiwu/code/Chinese_ink/hanzhe/code/DiffSynth-Studio/runs/staged_training_final_oom_fix/checkpoints/flow_predictor_step_final.pth"

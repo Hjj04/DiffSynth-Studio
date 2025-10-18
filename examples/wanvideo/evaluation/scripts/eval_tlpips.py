@@ -21,7 +21,6 @@ utils_dir = Path(__file__).resolve().parent.parent / "utils"
 sys.path.append(str(utils_dir))
 from video_utils import load_video_frames, parse_video_filename
 
-
 class TLPIPSEvaluator:
     """Temporal LPIPS评估器"""
     
@@ -196,7 +195,6 @@ class TLPIPSEvaluator:
         
         print(f"✓ 结果已保存到: {output_file}")
 
-
 def main():
     parser = argparse.ArgumentParser(description="计算视频的Temporal LPIPS")
     parser.add_argument(
@@ -235,7 +233,6 @@ def main():
         video_dir=Path(args.video_dir),
         output_file=Path(args.output_file)
     )
-
 
 if __name__ == "__main__":
     main()

@@ -15,8 +15,6 @@ eval_fid.py - 计算Fréchet Inception Distance (FID)
   计算 real_features 和 generated_features 的FID
   这才能测量生成图像对真实图像的保真度
 
-作者: AI Assistant
-日期: 2025-01-16
 """
 
 import argparse
@@ -159,18 +157,27 @@ class FIDCalculator:
         
         Args:
             video_dir: 视频目录
-            level: 级别（例如 "level_0"）
+            level: 级别（例如 "level_0" 或 "real"）
             max_frames_per_video: 每个视频最多提取的帧数
             
         Returns:
             帧数组 [N, H, W, C]
         """
-        level_num = level.split('_')[1]
-        video_pattern = f"video_{level_num}_*.mp4"
+        # ✅ 修复：处理真实数据的特殊情况
+        if level == "real":
+            # 真实数据：加载所有mp4视频
+            video_pattern = "*.mp4"
+            print(f"  加载真实数据视频（pattern: {video_pattern}）")
+        else:
+            # 生成数据：按级别过滤
+            level_num = level.split('_')[1]
+            video_pattern = f"video_{level_num}_*.mp4"
+            print(f"  加载生成数据视频（pattern: {video_pattern}）")
+        
         video_paths = sorted(glob(str(video_dir / video_pattern)))
         
         if not video_paths:
-            raise ValueError(f"未找到 {level} 的视频文件")
+            raise ValueError(f"未找到 {level} 的视频文件（pattern: {video_pattern}）")
         
         all_frames = []
         
@@ -180,6 +187,10 @@ class FIDCalculator:
             frames = self.extract_frames_from_video(Path(video_path), max_frames_per_video)
             if len(frames) > 0:
                 all_frames.append(frames)
+        
+        # ✅ 修复：检查是否成功提取帧
+        if not all_frames:
+            raise ValueError(f"未能从任何视频中提取帧")
         
         # 合并所有帧
         all_frames = np.vstack(all_frames)

@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-eval_warping_error_all_levels.py - 评估所有级别的Warping Error
-- Level 3: 使用Temporal Module重建误差
-- Level 0/1/2: 直接评估光流一致性误差
+eval_warping_error_all_levels.py - 评估所有级别的Warping Error（修复版）
 """
 
 import argparse
@@ -32,10 +30,8 @@ class WarpingErrorEvaluator:
             from diffsynth import ModelManager
             from diffsynth.models.wan_video_temporal_module import WanVideoTemporalModule
             
-            # 简化版加载逻辑
             checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
             
-            # 初始化temporal module
             self.temporal_module = WanVideoTemporalModule()
             self.temporal_module.load_state_dict(checkpoint["temporal_module"])
             self.temporal_module = self.temporal_module.to(self.device)
@@ -76,21 +72,29 @@ class WarpingErrorEvaluator:
         return flow
     
     def warp_frame(self, frame, flow):
-        """使用光流变形帧"""
+        """使用光流变形帧 - 修复版"""
         h, w = frame.shape[:2]
-        flow_map = np.copy(flow)
-        flow_map[:, :, 0] += np.arange(w)
-        flow_map[:, :, 1] += np.arange(h)[:, np.newaxis]
         
+        # ✅ 正确创建坐标网格
+        x_coords = np.arange(w).astype(np.float32)
+        y_coords = np.arange(h).astype(np.float32)
+        x_grid, y_grid = np.meshgrid(x_coords, y_coords)
+        
+        # ✅ 加上光流位移
+        map_x = (x_grid + flow[:, :, 0]).astype(np.float32)
+        map_y = (y_grid + flow[:, :, 1]).astype(np.float32)
+        
+        # 使用cv2.remap进行变形
         warped = cv2.remap(
-            frame, flow_map, None,
-            cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE
+            frame, map_x, map_y,
+            cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE
         )
         
         return warped
     
     def evaluate_video_optical_flow(self, video_path):
-        """使用光流一致性评估（Level 0/1/2）"""
+        """使用光流一致性评估（Level 0/1/2）- 修复版"""
         frames = self.load_video(video_path)
         
         if len(frames) < 2:
@@ -102,33 +106,45 @@ class WarpingErrorEvaluator:
             frame1 = frames[i]
             frame2 = frames[i + 1]
             
-            # 计算光流: frame1 -> frame2
-            flow = self.compute_optical_flow(frame1, frame2)
-            
-            # 使用光流变形frame1
-            warped_frame1 = self.warp_frame(frame1, flow)
-            
-            # 计算warping误差
-            error = np.mean(np.abs(warped_frame1.astype(float) - frame2.astype(float)))
-            errors.append(error)
+            try:
+                # 计算光流
+                flow = self.compute_optical_flow(frame1, frame2)
+                
+                # ✅ 检查光流有效性
+                if flow is None or np.any(np.isnan(flow)) or np.any(np.isinf(flow)):
+                    continue
+                
+                # 变形frame1
+                warped_frame1 = self.warp_frame(frame1, flow)
+                
+                # 计算warping误差
+                error = np.mean(np.abs(warped_frame1.astype(float) - frame2.astype(float)))
+                
+                # ✅ 检查误差合理性
+                if 0 <= error <= 255:
+                    errors.append(error)
+                    
+            except Exception as e:
+                print(f"⚠️ 处理视频 {video_path.name} 帧 {i} 时出错: {e}")
+                continue
+        
+        if not errors:
+            return None
         
         return {
-            "mean_error": np.mean(errors),
-            "std_error": np.std(errors),
-            "median_error": np.median(errors),
-            "max_error": np.max(errors),
-            "min_error": np.min(errors)
+            "mean_error": float(np.mean(errors)),
+            "std_error": float(np.std(errors)),
+            "median_error": float(np.median(errors)),
+            "max_error": float(np.max(errors)),
+            "min_error": float(np.min(errors)),
+            "num_valid_pairs": len(errors)
         }
     
     def evaluate_video_temporal_module(self, video_path):
         """使用Temporal Module评估（Level 3）"""
         if self.temporal_module is None:
-            # 回退到光流方法
             return self.evaluate_video_optical_flow(video_path)
         
-        # 这里应该实现使用temporal module的完整评估逻辑
-        # 由于涉及VAE编码/解码，代码较复杂
-        # 暂时使用光流方法
         print("⚠️  Temporal Module评估未完全实现，使用光流方法")
         return self.evaluate_video_optical_flow(video_path)
     
@@ -185,10 +201,11 @@ def main():
     # 汇总统计
     summary = {
         "level": args.level,
-        "num_videos": len(results),
-        "mean_error": np.mean([r["mean_error"] for r in results]),
-        "std_error": np.std([r["mean_error"] for r in results]),
-        "median_error": np.median([r["mean_error"] for r in results]),
+        "num_videos": len(video_paths),
+        "num_valid_videos": len(results),
+        "mean_error": float(np.mean([r["mean_error"] for r in results])) if results else None,
+        "std_error": float(np.std([r["mean_error"] for r in results])) if results else None,
+        "median_error": float(np.median([r["mean_error"] for r in results])) if results else None,
         "lower_is_better": True,
         "evaluation_method": "temporal_module" if use_temporal else "optical_flow",
         "per_video_results": results
@@ -205,9 +222,11 @@ def main():
     print(f"Warping Error评估结果 ({args.level})")
     print("="*80)
     print(f"评估方法: {summary['evaluation_method']}")
-    print(f"平均误差: {summary['mean_error']:.4f}")
-    print(f"标准差: {summary['std_error']:.4f}")
-    print(f"中位数: {summary['median_error']:.4f}")
+    print(f"有效视频: {summary['num_valid_videos']}/{summary['num_videos']}")
+    if summary['mean_error'] is not None:
+        print(f"平均误差: {summary['mean_error']:.4f}")
+        print(f"标准差: {summary['std_error']:.4f}")
+        print(f"中位数: {summary['median_error']:.4f}")
     print("="*80)
     print(f"\n✓ 结果已保存到: {output_path}")
 
